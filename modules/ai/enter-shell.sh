@@ -31,9 +31,11 @@ safe_ln() {
 }
 
 mcp_config="$1"
-post_edit_hook="$2"
+post_edit_hook="${2:-}"
 
 root="${DEVENV_ROOT:-$PWD}"
 mkdir -p "$root/.pi/extensions"
 safe_ln "$mcp_config" "$root/.pi/mcp.json"
-safe_ln "$post_edit_hook" "$root/.pi/extensions/post-edit-hook.ts"
+if [ -n "$post_edit_hook" ]; then
+  safe_ln "$post_edit_hook" "$root/.pi/extensions/post-edit-hook.ts"
+fi
