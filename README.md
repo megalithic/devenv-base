@@ -60,4 +60,4 @@ See `lat.md/` for full documentation. Briefly:
 
 ## Configuration
 
-All options live under the `devenv-base` namespace. See `lat.md/` for details on extending languages, formatters, LSPs, gitignore entries, and more.
+All options live under the `devenv-base` namespace. Most modules have `devenv-base.<module>.enable`, defaulting to `true`, so consumers can opt out of base behavior. See `lat.md/` for details on extending languages, formatters, LSPs, gitignore entries, and more.

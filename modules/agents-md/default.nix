@@ -5,56 +5,67 @@
   ...
 }:
 let
+  cfg = config.devenv-base.agents-md;
   baseContent = builtins.readFile ./BASE_AGENTS.md;
 
-  # Strip the "## Tickets and tasks" section (header through the next H2 or EOF).
-  # Splits on the section header, then re-joins everything from the next H2 onward.
-  stripTkSection =
-    content:
+  # Strip a top-level section (header through the next H2 or EOF).
+  # Used when generated AGENTS.md would otherwise mention disabled modules.
+  stripSection =
+    section: content:
     let
-      parts = lib.splitString "\n## Tickets and tasks\n" content;
+      header = "\n## ${section}\n";
+      parts = lib.splitString header content;
     in
     if builtins.length parts < 2 then
       content
     else
       let
         before = builtins.head parts;
-        rest = lib.concatStringsSep "\n## Tickets and tasks\n" (builtins.tail parts);
+        rest = lib.concatStringsSep header (builtins.tail parts);
         afterParts = lib.splitString "\n## " rest;
-        afterTk =
+        afterSection =
           if builtins.length afterParts > 1 then
             "\n## " + lib.concatStringsSep "\n## " (builtins.tail afterParts)
           else
             "";
       in
-      before + afterTk;
+      before + afterSection;
 
-  filteredBase =
-    if config.devenv-base.agents-md.includeTk then baseContent else stripTkSection baseContent;
+  filteredBase = lib.pipe baseContent (
+    lib.optional (!cfg.includeTk || !config.devenv-base.tk.enable) (stripSection "Tickets and tasks")
+    ++ lib.optional (!config.devenv-base.lat-md.enable) (stripSection "Lat")
+  );
 
   agentsMdContent =
     filteredBase
-    + (lib.optionalString (config.devenv-base.agents-md.extraEntries != [ ]) (
-      "\n\n" + (lib.concatStringsSep "\n" config.devenv-base.agents-md.extraEntries) + "\n"
+    + (lib.optionalString (cfg.extraEntries != [ ]) (
+      "\n\n" + (lib.concatStringsSep "\n" cfg.extraEntries) + "\n"
     ));
 in
 {
-  options.devenv-base.agents-md.extraEntries = lib.mkOption {
-    type = lib.types.listOf lib.types.str;
-    default = [ ];
+  options.devenv-base.agents-md = {
+    enable = lib.mkEnableOption "devenv-base AGENTS.md setup" // {
+      default = true;
+    };
+
+    extraEntries = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+    };
+
+    includeTk = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Include the "## Tickets and tasks" section from BASE_AGENTS.md.
+        Disable when the consuming project uses a different ticket workflow
+        (e.g. skills/task-pipeline). The section is also omitted when
+        devenv-base.tk.enable is false.
+      '';
+    };
   };
 
-  options.devenv-base.agents-md.includeTk = lib.mkOption {
-    type = lib.types.bool;
-    default = true;
-    description = ''
-      Include the "## Tickets and tasks" section from BASE_AGENTS.md.
-      Disable when the consuming project uses a different ticket workflow
-      (e.g. skills/task-pipeline).
-    '';
-  };
-
-  config = {
+  config = lib.mkIf cfg.enable {
     enterShell = "bash ${./enter-shell.sh} ${pkgs.writeText "agents-md" agentsMdContent}";
   };
 }

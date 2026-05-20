@@ -1,5 +1,11 @@
-{ pkgs, ... }:
+{
+  lib,
+  pkgs,
+  config,
+  ...
+}:
 let
+  cfg = config.devenv-base.lat-md;
   version = "0.11.0";
   src = pkgs.fetchurl {
     url = "https://registry.npmjs.org/lat.md/-/lat.md-${version}.tgz";
@@ -20,9 +26,15 @@ let
   extensionFile = pkgs.writeText "lat.ts" (builtins.readFile ./lat.ts);
 in
 {
-  packages = [
-    lat-md
-  ];
+  options.devenv-base.lat-md.enable = lib.mkEnableOption "devenv-base lat.md tooling" // {
+    default = true;
+  };
 
-  enterShell = "bash ${./enter-shell.sh} ${skillFile} ${extensionFile}";
+  config = lib.mkIf cfg.enable {
+    packages = [
+      lat-md
+    ];
+
+    enterShell = "bash ${./enter-shell.sh} ${skillFile} ${extensionFile}";
+  };
 }

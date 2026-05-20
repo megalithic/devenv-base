@@ -8,8 +8,9 @@ nixd (Nix), bashls (shell).
 
 ## Options
 
-Two options extend the base config.
+Three options control the base config.
 
+- `devenv-base.nvim.enable` — generate `.nvim.lua`. Defaults to `true`.
 - `devenv-base.nvim.extraLsps` — list of LSP server names added on top of the base set.
 - `devenv-base.nvim.extraConfig` — string appended after LSP setup.
 

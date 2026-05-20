@@ -1,6 +1,6 @@
 # Git hooks
 
-Pre-commit hooks that run on every commit. Configured in `modules/git-hooks/default.nix`.
+Pre-commit hooks that run on every commit. Configured in `modules/git-hooks/default.nix`; disable the base hook set with `devenv-base.git-hooks.enable = false`.
 
 ## Hooks
 

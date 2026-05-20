@@ -1,6 +1,6 @@
 # Languages and formatters
 
-Enables Nix and shell by default. Formats on every commit via treefmt.
+Enables Nix and shell by default. Formats on every commit via treefmt. Disable languages with `devenv-base.languages.enable = false` or treefmt with `devenv-base.treefmt.enable = false`.
 
 ## Languages
 
@@ -18,7 +18,7 @@ Lock files (`*.lock`, `*.lockb`, `package-lock.json`, `pnpm-lock.yaml`) and `.de
 
 ## Configuration
 
-`devenv-base.treefmt` — attrset passed to treefmt-nix. Add formatters or change excludes:
+`devenv-base.treefmt` — submodule with freeform attrs passed to treefmt-nix, plus `enable` for opting out. Add formatters or change excludes:
 
 ```nix
 devenv-base.treefmt = {

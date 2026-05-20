@@ -6,7 +6,9 @@
   ...
 }:
 let
+  cfg = config.devenv-base.treefmt;
   treefmt-nix = import inputs.treefmt-nix;
+  treefmtConfig = builtins.removeAttrs cfg [ "enable" ];
   treefmtEval = treefmt-nix.evalModule pkgs {
     imports = [
       {
@@ -24,17 +26,22 @@ let
           shfmt.enable = true;
         };
       }
-      config.devenv-base.treefmt
+      treefmtConfig
     ];
   };
 in
 {
   options.devenv-base.treefmt = lib.mkOption {
-    type = lib.types.attrs;
+    type = lib.types.submodule {
+      freeformType = lib.types.attrs;
+      options.enable = lib.mkEnableOption "devenv-base treefmt setup" // {
+        default = true;
+      };
+    };
     default = { };
   };
 
-  config = {
+  config = lib.mkIf cfg.enable {
     packages = [
       treefmtEval.config.build.wrapper
     ];

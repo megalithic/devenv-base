@@ -7,6 +7,7 @@
 - Always use devenv to install tools and services or to define tasks.
 - This devenv setup imports collection of extensible modules from `otahontas/devenv-base` repository.
   - When you need to customize something in devenv, check first how to use `devenv-base` and if it has a module that can be extended.
+  - If a `devenv-base.<module>.enable` option is set to `false`, ignore instructions and tools from that disabled module.
 
 ## Tickets and tasks
 

@@ -15,9 +15,11 @@ Each module is a Nix file in `modules/` that declares options under `devenv-base
 
 Consumer repos reference this flake in `devenv.yaml` and extend options in their own `devenv.nix`.
 
+Most modules expose `devenv-base.<module>.enable`, defaulting to `true`. Set it to `false` to opt out of that module's packages, generated files, shell hooks, tasks, or git hooks.
+
 ## Extension pattern
 
-All modules accept options under the `devenv-base` namespace. Consumers override or extend via these options in their own `devenv.nix`.
+All modules accept options under the `devenv-base` namespace. Consumers override, extend, or disable modules via these options in their own `devenv.nix`.
 
 ## Adding a new language
 
