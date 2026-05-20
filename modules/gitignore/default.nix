@@ -4,13 +4,22 @@
   config,
   ...
 }:
+let
+  cfg = config.devenv-base.gitignore;
+in
 {
-  options.devenv-base.gitignore.extraEntries = lib.mkOption {
-    type = lib.types.listOf lib.types.str;
-    default = [ ];
+  options.devenv-base.gitignore = {
+    enable = lib.mkEnableOption "devenv-base managed .gitignore" // {
+      default = true;
+    };
+
+    extraEntries = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+    };
   };
 
-  config =
+  config = lib.mkIf cfg.enable (
     let
       baseEntries = [
         ".devenv*"
@@ -28,12 +37,13 @@
         + (lib.concatStringsSep "\n" baseEntries)
         + "\n"
         + "### end\n"
-        + (lib.optionalString (config.devenv-base.gitignore.extraEntries != [ ]) (
-          "\n" + lib.concatStringsSep "\n" config.devenv-base.gitignore.extraEntries + "\n"
+        + (lib.optionalString (cfg.extraEntries != [ ]) (
+          "\n" + lib.concatStringsSep "\n" cfg.extraEntries + "\n"
         ))
       );
     in
     {
       enterShell = "bash ${./enter-shell.sh} ${gitignoreFile}";
-    };
+    }
+  );
 }

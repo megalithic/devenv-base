@@ -8,9 +8,19 @@ Generates a locked `.gitignore` on shell entry. Configured in `modules/gitignore
 
 ## Lock mechanism
 
-The file is set to mode 444 and flagged `uchg` (user immutable). This prevents accidental edits — the gitignore is managed by the module, not by hand.
+The file is set to mode 444. This prevents accidental edits — the gitignore is managed by the module, not by hand.
 
-## Option
+## Options
+
+`devenv-base.gitignore.enable` — enable managed `.gitignore`. Defaults to `true`.
+
+Disable it when the repo owns `.gitignore` as a team-managed file:
+
+```nix
+devenv-base.gitignore.enable = false;
+```
+
+If `.gitignore` was already generated read-only, run `chmod u+w .gitignore` once after disabling.
 
 `devenv-base.gitignore.extraEntries` — list of patterns appended after the base entries.
 
