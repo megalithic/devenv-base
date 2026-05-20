@@ -285,7 +285,7 @@ export default function (pi: ExtensionAPI) {
       "Use `lat_section` to read the full content of relevant matches.",
       "Do not read files, write code, or run commands until you have searched.",
       "",
-      "Remember: `lat.md/` must stay in sync with the codebase. If you change code, update the relevant sections in `lat.md/` and run `lat_check` before finishing.",
+      "Remember: `lat.md/` must stay in sync with the codebase. If you change code, update the relevant sections in `lat.md/` and if `lat_check` exists/is on the $PATH, run `lat_check` before finishing.",
     ].join("\n");
 
     return {
