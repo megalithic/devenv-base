@@ -6,6 +6,8 @@ Sets up pi (coding agent) integrations: MCP server, post-edit hook, AGENTS.md, a
 
 Each `enter-shell.sh` uses `safe_ln` instead of bare `ln -sfn`. Before creating a symlink, it removes the old one and any macOS " 2", " 3" duplicates (e.g., `AGENTS 2.md`).
 
+The `ai`, `agents-md`, and `lat-md` modules run `enter-shell.sh` unconditionally with an `enable` or `disable` mode argument. In `disable` mode the script calls `safe_rm_link` to remove the managed symlinks under `.pi/`. This guarantees that toggling `devenv-base.<module>.enable` off cleans up prior state, so pi does not load stale extensions, skills, or agent files for disabled modules.
+
 ## MCP server
 
 `modules/ai/default.nix` symlinks `modules/ai/mcp.json` to `.pi/mcp.json` and `post-edit-hook.ts` to `.pi/extensions/post-edit-hook.ts` via `enter-shell.sh`.

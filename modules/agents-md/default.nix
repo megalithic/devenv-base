@@ -65,7 +65,12 @@ in
     };
   };
 
-  config = lib.mkIf cfg.enable {
-    enterShell = "bash ${./enter-shell.sh} ${pkgs.writeText "agents-md" agentsMdContent}";
+  config = {
+    # Always run enter-shell.sh so disabling removes stale .pi/agent/AGENTS.md.
+    enterShell =
+      if cfg.enable then
+        "bash ${./enter-shell.sh} enable ${pkgs.writeText "agents-md" agentsMdContent}"
+      else
+        "bash ${./enter-shell.sh} disable";
   };
 }

@@ -10,10 +10,8 @@ safe_ln() {
   dir="$(dirname "$dest")"
   base="$(basename "$dest")"
 
-  # Remove target if it's a symlink
   [ -L "$dest" ] && rm "$dest"
 
-  # Build name/ext for duplicate pattern
   if [[ $base == *.* ]]; then
     name="${base%.*}"
     ext=".${base##*.}"
@@ -22,7 +20,6 @@ safe_ln() {
     ext=""
   fi
 
-  # Remove "name N.ext" duplicate symlinks in same dir
   find "$dir" -maxdepth 1 -type l \
     \( -name "${name} ${ext}" -o -name "${name} [0-9]*${ext}" \) \
     -delete 2>/dev/null || true
@@ -30,12 +27,42 @@ safe_ln() {
   ln -s "$src" "$dest"
 }
 
-mcp_config="$1"
-post_edit_hook="${2:-}"
+safe_rm_link() {
+  local dest="$1"
+  local dir base name ext
 
+  [ -L "$dest" ] && rm "$dest"
+
+  dir="$(dirname "$dest")"
+  base="$(basename "$dest")"
+  if [[ $base == *.* ]]; then
+    name="${base%.*}"
+    ext=".${base##*.}"
+  else
+    name="$base"
+    ext=""
+  fi
+  find "$dir" -maxdepth 1 -type l \
+    \( -name "${name} ${ext}" -o -name "${name} [0-9]*${ext}" \) \
+    -delete 2>/dev/null || true
+}
+
+mode="$1"
 root="${DEVENV_ROOT:-$PWD}"
-mkdir -p "$root/.pi/extensions"
-safe_ln "$mcp_config" "$root/.pi/mcp.json"
-if [ -n "$post_edit_hook" ]; then
-  safe_ln "$post_edit_hook" "$root/.pi/extensions/post-edit-hook.ts"
+mcp_dest="$root/.pi/mcp.json"
+hook_dest="$root/.pi/extensions/post-edit-hook.ts"
+
+if [ "$mode" = "enable" ]; then
+  mcp_config="$2"
+  post_edit_hook="${3:-}"
+  mkdir -p "$root/.pi/extensions"
+  safe_ln "$mcp_config" "$mcp_dest"
+  if [ -n "$post_edit_hook" ]; then
+    safe_ln "$post_edit_hook" "$hook_dest"
+  else
+    safe_rm_link "$hook_dest"
+  fi
+else
+  safe_rm_link "$mcp_dest"
+  safe_rm_link "$hook_dest"
 fi

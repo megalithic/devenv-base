@@ -33,9 +33,15 @@ in
     };
   };
 
-  config = lib.mkIf cfg.enable {
-    claude.code.enable = lib.mkForce false;
+  config = {
+    claude.code.enable = lib.mkIf cfg.enable (lib.mkForce false);
 
-    enterShell = "bash ${./enter-shell.sh} ${mcpConfig} ${postEditHookArg}";
+    # Always run enter-shell.sh so disabling the module removes prior
+    # symlinks instead of leaving stale .pi/mcp.json / post-edit-hook.
+    enterShell =
+      if cfg.enable then
+        "bash ${./enter-shell.sh} enable ${mcpConfig} ${postEditHookArg}"
+      else
+        "bash ${./enter-shell.sh} disable";
   };
 }

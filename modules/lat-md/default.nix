@@ -30,11 +30,16 @@ in
     default = true;
   };
 
-  config = lib.mkIf cfg.enable {
-    packages = [
-      lat-md
-    ];
+  config = {
+    packages = lib.optional cfg.enable lat-md;
 
-    enterShell = "bash ${./enter-shell.sh} ${skillFile} ${extensionFile}";
+    # Always run enter-shell.sh — installs symlinks when enabled, removes
+    # leftover symlinks when disabled so pi does not load a stale extension
+    # that calls a `lat` binary no longer on PATH.
+    enterShell =
+      if cfg.enable then
+        "bash ${./enter-shell.sh} enable ${skillFile} ${extensionFile}"
+      else
+        "bash ${./enter-shell.sh} disable";
   };
 }
