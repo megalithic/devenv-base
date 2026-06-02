@@ -32,7 +32,9 @@ Generated AGENTS.md omits the ticket section when `devenv-base.tk.enable = false
 
 ## lat.md extension
 
-`modules/lat-md/default.nix` installs the `lat` CLI (v0.11.0) and symlinks two files into `.pi/` via `enter-shell.sh`. Disable it with `devenv-base.lat-md.enable = false`.
+`modules/lat-md/default.nix` installs the `lat` CLI (v0.11.0) and symlinks two files into `.pi/` via `enter-shell.sh`.
+
+Disable it with `devenv-base.lat-md.enable = false`; the gitignore module then omits `lat.md/.cache/`.
 
 - `modules/lat-md/SKILL.md` → `.pi/skills/lat-md/SKILL.md` — authoring guide for lat.md files
 - `modules/lat-md/lat.ts` → `.pi/extensions/lat.ts` — pi extension that registers lat tools (`lat_search`, `lat_section`, `lat_locate`, `lat_check`, `lat_expand`, `lat_refs`) and injects a pre-work reminder and post-work `lat check`.

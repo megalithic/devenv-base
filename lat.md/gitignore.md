@@ -4,7 +4,7 @@ Generates a locked `.gitignore` on shell entry. Configured in `modules/gitignore
 
 ## Base entries
 
-`.devenv*`, `.gitignore`, `.nvim.lua`, `.pre-commit-config.yaml`, `.pi`, `devenv.local.nix`, `devenv.local.yaml`, `lat.md/.cache/`, `result`.
+The generated ignore list covers devenv, pi, local override files, and `result`. It includes `lat.md/.cache/` only when `devenv-base.lat-md.enable = true`.
 
 ## Lock mechanism
 

@@ -15,7 +15,7 @@ Shared [devenv](https://devenv.sh) setup. Bundles base languages, formatters, gi
 ```yaml
 inputs:
   devenv-base:
-    url: github:otahontas/devenv-base
+    url: github:megalithic/devenv-base
     flake: false
   git-hooks:
     url: github:cachix/git-hooks.nix

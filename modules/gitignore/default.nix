@@ -29,7 +29,9 @@ in
         ".pi"
         "devenv.local.nix"
         "devenv.local.yaml"
-        "lat.md/.cache/"
+      ]
+      ++ lib.optional config.devenv-base.lat-md.enable "lat.md/.cache/"
+      ++ [
         "result"
       ];
       gitignoreFile = pkgs.writeText "gitignore" (

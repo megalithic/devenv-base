@@ -7,7 +7,7 @@ Reusable composite action and a weekly auto-update workflow.
 `.github/actions/setup-devenv` — installs Nix, configures the Cachix devenv cache, and installs devenv. Other repos use it:
 
 ```yaml
-- uses: otahontas/devenv-base/.github/actions/setup-devenv@main
+- uses: megalithic/devenv-base/.github/actions/setup-devenv@main
 ```
 
 Full example:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: otahontas/devenv-base/.github/actions/setup-devenv@main
+      - uses: megalithic/devenv-base/.github/actions/setup-devenv@main
       - run: devenv ci
 ```
 
