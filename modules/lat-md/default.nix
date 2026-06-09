@@ -16,7 +16,15 @@ let
     inherit version src;
     sourceRoot = "package";
     postPatch = ''
-      cp ${./package-lock.json} package-lock.json
+        cp ${./package-lock.json} package-lock.json
+        # Allow any OpenAI-compatible embedding provider via env (synthetic, local
+        # llamacpp, openrouter, etc.). When LAT_LLM_BASE_URL is set, bypass the
+        # built-in sk-/vck- prefix detection and use the env-configured endpoint.
+        substituteInPlace dist/src/search/provider.js \
+          --replace 'export function detectProvider(key) {' 'export function detectProvider(key) {
+      if (process.env.LAT_LLM_BASE_URL) {
+          return { name: "custom", apiBase: process.env.LAT_LLM_BASE_URL, model: process.env.LAT_LLM_MODEL || "text-embedding-3-small", dimensions: Number(process.env.LAT_LLM_DIMENSIONS || 1536), headers: (k) => ({ Authorization: "Bearer " + k, "Content-Type": "application/json" }) };
+      }'
     '';
     npmDepsHash = "sha256-1n3XaT63b+rFl2KsS4mUz/Y4ko6+bit+a3etHk1r0C4=";
     dontBuild = true;
