@@ -39,7 +39,7 @@ Its package patch lets `LAT_LLM_BASE_URL`, `LAT_LLM_MODEL`, and `LAT_LLM_DIMENSI
 Disable it with `devenv-base.lat-md.enable = false`; the gitignore module then omits `lat.md/.cache/`.
 
 - `modules/lat-md/SKILL.md` → `.pi/skills/lat-md/SKILL.md` — authoring guide for lat.md files
-- `modules/lat-md/lat.ts` → `.pi/extensions/lat.ts` — pi extension that registers lat tools (`lat_search`, `lat_section`, `lat_locate`, `lat_check`, `lat_expand`, `lat_refs`) and injects a pre-work reminder and post-work `lat check`. It runs `${HOME}/.pi/agent/bin/lat` by default (or `LAT_BIN` when set) so stale PATH entries do not select an unpatched lat package.
+- `modules/lat-md/lat.ts` → `.pi/extensions/lat.ts` — pi extension that registers lat tools (`lat_search`, `lat_section`, `lat_locate`, `lat_check`, `lat_expand`, `lat_refs`) and injects a once-per-session pre-work reminder and post-work `lat check`. Hooks are gated: `/lat on|off|status` toggles them per session, the model-callable `lat_hooks` tool lets skills toggle them (e.g. grill-me disables hooks during interviews and re-enables after), `LAT_HOOKS=off` starts them disabled, the `agent_end` check only fires when the session itself edited files (via `edit`/`write` tool calls), and the git-diff sync nag compares against a startup baseline so pre-existing dirty-worktree changes never count. It runs `${HOME}/.pi/agent/bin/lat` by default (or `LAT_BIN` when set) so stale PATH entries do not select an unpatched lat package.
 
 ## Ticket tool
 

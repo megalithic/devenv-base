@@ -33,13 +33,15 @@ function collapsibleResult(
   );
 }
 
-/** Absolute path to the lat binary, injected by `lat init`. */
-const LAT = "lat";
+/** Prefer the agent-managed lat binary over whatever PATH resolves first. */
+const LAT =
+  process.env.LAT_BIN ??
+  (process.env.HOME ? `${process.env.HOME}/.pi/agent/bin/lat` : "lat");
 
 function run(args: string[], cwd?: string): string {
-  const { execSync } =
+  const { execFileSync } =
     require("child_process") as typeof import("child_process");
-  return execSync(`${LAT} ${args.join(" ")}`, {
+  return execFileSync(LAT, args, {
     cwd: cwd ?? process.cwd(),
     encoding: "utf-8",
     timeout: 30_000,
@@ -273,19 +275,110 @@ export default function (pi: ExtensionAPI) {
 
   // ── Lifecycle hooks ────────────────────────────────────────────────
 
+  // Hooks can be disabled per session via `/lat off` or LAT_HOOKS=off.
+  let hooksEnabled = process.env.LAT_HOOKS !== "off";
+  // Reminder fires once per session, not every turn.
+  let reminderSent = false;
   // Guard to prevent agent_end from firing twice per prompt (infinite loop)
   let agentEndFired = false;
+  // Only nag about lat.md sync when this session actually edited files.
+  let sessionEdited = false;
+
+  // Snapshot of dirty-worktree state at startup, so pre-existing
+  // uncommitted changes don't count against the current session.
+  function diffNumstat(): Map<string, number> {
+    const result = new Map<string, number>();
+    try {
+      const { execSync } =
+        require("child_process") as typeof import("child_process");
+      const numstat = execSync("git diff HEAD --numstat", {
+        encoding: "utf-8",
+        cwd: process.cwd(),
+        timeout: 10_000,
+      });
+      for (const line of numstat.split("\n")) {
+        const parts = line.split("\t");
+        if (parts.length < 3) continue;
+        const added = parseInt(parts[0], 10) || 0;
+        const removed = parseInt(parts[1], 10) || 0;
+        result.set(parts[2], added + removed);
+      }
+    } catch {
+      // git not available or no HEAD
+    }
+    return result;
+  }
+  const baseline = diffNumstat();
+
+  pi.registerTool({
+    name: "lat_hooks",
+    label: "lat hooks",
+    description:
+      "Enable or disable lat.md lifecycle hooks (pre-work reminder, post-work lat check) for this session. Disable during pure-conversation workflows (e.g. grill-me interviews); re-enable when done.",
+    parameters: Type.Object({
+      enabled: Type.Boolean({
+        description: "true = hooks on, false = hooks off",
+      }),
+    }),
+    async execute(_id, params: { enabled: boolean }) {
+      hooksEnabled = params.enabled;
+      return {
+        content: [
+          {
+            type: "text",
+            text: `lat.md hooks ${hooksEnabled ? "enabled" : "disabled"} for this session.`,
+          },
+        ],
+      };
+    },
+    renderCall(args: { enabled: boolean }, theme) {
+      return new Text(
+        theme.fg("toolTitle", theme.bold("lat hooks ")) +
+          theme.fg("dim", args.enabled ? "on" : "off"),
+        0,
+        0,
+      );
+    },
+  });
+
+  pi.registerCommand("lat", {
+    description: "Control lat.md hooks: /lat on | off | status",
+    handler: async (args: string) => {
+      const arg = (args || "").trim();
+      if (arg === "on") {
+        hooksEnabled = true;
+      } else if (arg === "off") {
+        hooksEnabled = false;
+      }
+      pi.sendMessage(
+        {
+          customType: "lat-reminder",
+          content: `lat.md hooks: ${hooksEnabled ? "on" : "off"}`,
+          display: true,
+        },
+        { deliverAs: "nextTurn" },
+      );
+    },
+  });
+
+  pi.on("tool_call", async (event: { toolName: string }) => {
+    if (event.toolName === "edit" || event.toolName === "write") {
+      sessionEdited = true;
+    }
+  });
 
   pi.on("before_agent_start", async () => {
     agentEndFired = false;
 
+    if (!hooksEnabled || reminderSent) return;
+    reminderSent = true;
+
     const reminder = [
-      "Before starting work, run `lat_search` with one or more queries describing the user's intent.",
-      "ALWAYS do this, even when the task seems straightforward — search results may reveal critical design details, protocols, or constraints.",
+      "If this task involves understanding or changing code, run `lat_search` with queries describing the intent before diving in — results may reveal design details, protocols, or constraints.",
       "Use `lat_section` to read the full content of relevant matches.",
-      "Do not read files, write code, or run commands until you have searched.",
+      "For pure conversation (interviews, brainstorming, Q&A about intent), skip lat tools and respond directly.",
       "",
-      "Remember: `lat.md/` must stay in sync with the codebase. If you change code, update the relevant sections in `lat.md/` and if `lat_check` exists/is on the $PATH, run `lat_check` before finishing.",
+      "Remember: `lat.md/` must stay in sync with the codebase. If you change code, update the relevant sections in `lat.md/` and run `lat_check` before finishing.",
     ].join("\n");
 
     return {
@@ -302,39 +395,32 @@ export default function (pi: ExtensionAPI) {
     if (agentEndFired) return;
     agentEndFired = true;
 
+    // Skip entirely when hooks are off or this session never edited files
+    // (read-only sessions must not be punished for a dirty worktree).
+    if (!hooksEnabled || !sessionEdited) return;
+
     // Run lat check
-    let checkOutput: string;
     let checkFailed = false;
     try {
-      checkOutput = run(["check"]);
-    } catch (err: unknown) {
+      run(["check"]);
+    } catch {
       checkFailed = true;
-      checkOutput = (err as { stdout?: string }).stdout || "";
     }
 
-    // Run git diff --numstat to check if lat.md/ is in sync
+    // Compare current diff against startup baseline — only count changes
+    // made during this session.
     let needsSync = false;
     let codeLines = 0;
-    try {
-      const { execSync } =
-        require("child_process") as typeof import("child_process");
-      const numstat = execSync("git diff HEAD --numstat", {
-        encoding: "utf-8",
-        cwd: process.cwd(),
-      });
-
+    {
+      const current = diffNumstat();
       let latMdLines = 0;
-      for (const line of numstat.split("\n")) {
-        const parts = line.split("\t");
-        if (parts.length < 3) continue;
-        const added = parseInt(parts[0], 10) || 0;
-        const removed = parseInt(parts[1], 10) || 0;
-        const file = parts[2];
-        const changed = added + removed;
+      for (const [file, changed] of current) {
+        const delta = Math.max(0, changed - (baseline.get(file) ?? 0));
+        if (delta === 0) continue;
         if (file.startsWith("lat.md/")) {
-          latMdLines += changed;
+          latMdLines += delta;
         } else if (/\.(ts|tsx|js|jsx|py|rs|go|c|h)$/.test(file)) {
-          codeLines += changed;
+          codeLines += delta;
         }
       }
 
@@ -342,8 +428,6 @@ export default function (pi: ExtensionAPI) {
         const effectiveLatMd = latMdLines === 0 ? 0 : Math.max(latMdLines, 1);
         needsSync = effectiveLatMd < codeLines * 0.05;
       }
-    } catch {
-      // git not available or no HEAD — skip diff check
     }
 
     if (!checkFailed && !needsSync) return;
