@@ -34,10 +34,12 @@ Generated AGENTS.md omits the ticket section when `devenv-base.tk.enable = false
 
 `modules/lat-md/default.nix` installs the `lat` CLI (v0.11.0) and symlinks two files into `.pi/` via `enter-shell.sh`.
 
+Its package patch lets `LAT_LLM_BASE_URL`, `LAT_LLM_MODEL`, and `LAT_LLM_DIMENSIONS` override built-in provider detection for OpenAI-compatible embedding endpoints. It also rejects `sk-or-*` OpenRouter keys before lat.md's broad `sk-*` OpenAI branch can send them to `api.openai.com` and fail with a misleading 401.
+
 Disable it with `devenv-base.lat-md.enable = false`; the gitignore module then omits `lat.md/.cache/`.
 
 - `modules/lat-md/SKILL.md` → `.pi/skills/lat-md/SKILL.md` — authoring guide for lat.md files
-- `modules/lat-md/lat.ts` → `.pi/extensions/lat.ts` — pi extension that registers lat tools (`lat_search`, `lat_section`, `lat_locate`, `lat_check`, `lat_expand`, `lat_refs`) and injects a pre-work reminder and post-work `lat check`.
+- `modules/lat-md/lat.ts` → `.pi/extensions/lat.ts` — pi extension that registers lat tools (`lat_search`, `lat_section`, `lat_locate`, `lat_check`, `lat_expand`, `lat_refs`) and injects a pre-work reminder and post-work `lat check`. It runs `${HOME}/.pi/agent/bin/lat` by default (or `LAT_BIN` when set) so stale PATH entries do not select an unpatched lat package.
 
 ## Ticket tool
 
