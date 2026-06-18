@@ -6,8 +6,15 @@
 #
 # Sub-modules (each separately enable'd):
 #   devenv-base.elixir.phoenix   — Endpoint port, processes.phoenix, start-phx, status, tidewave MCP, app:* tasks
-#   devenv-base.elixir.postgres  — Repo port, services.postgres, PG_*_TABLE envs, status pg block
+#   devenv-base.elixir.postgres  — Repo port, services.postgres, PG_*_TABLE envs
 #   devenv-base.elixir.worktree  — SNAME detection, disableListeners, pre-/post- hooks, worktree:* tasks
+#
+# IMPORTANT — project-relative file paths:
+#   builtins.readFile inside a shared module resolves relative to the MODULE's
+#   nix store path, NOT the consuming project. Consumer MUST provide:
+#     devenv-base.elixir.toolVersionsFile = ./.tool-versions;
+#     devenv-base.elixir.mixExsFile       = ./mix.exs;
+#     devenv-base.elixir.devExsFile       = ./config/dev.exs;  # optional
 {
   pkgs,
   lib,
@@ -18,11 +25,11 @@ let
   cfg = config.devenv-base.elixir;
 
   # ── .tool-versions parser ────────────────────────────────────────────────
-  # Reads .tool-versions at nix eval time. Major-version pinning only
-  # (nixpkgs ships major channels: erlang_28, elixir_1_19, nodejs_24).
+  # Uses cfg.toolVersionsFile so the read resolves relative to the CONSUMER's
+  # project, not this module's nix store path.
   toolVersions =
     let
-      lines = lib.splitString "\n" (builtins.readFile ./.tool-versions);
+      lines = lib.splitString "\n" (builtins.readFile cfg.toolVersionsFile);
       valid = lib.filter (l: l != "" && !(lib.hasPrefix "#" l)) lines;
       parse =
         line:
@@ -36,7 +43,7 @@ let
   # ── App name parsed from mix.exs ─────────────────────────────────────────
   appName =
     let
-      content = builtins.readFile ./mix.exs;
+      content = builtins.readFile cfg.mixExsFile;
       lines = lib.splitString "\n" content;
       appLines = lib.filter (l: builtins.match ".*app: :([a-z_]+).*" l != null) lines;
     in
@@ -46,17 +53,15 @@ let
       builtins.head (builtins.match ".*app: :([a-z_]+).*" (builtins.head appLines));
 
   # ── Generic config/dev.exs integer parser ────────────────────────────────
-  # Scans for a `config :<app>, <moduleGlob>` block and extracts the first
-  # integer value for the given `attr:`. Uses builtins.readFile so nix
-  # re-evaluates when the file changes.
-  #
-  #   configInt ".*Repo" "port" 5432     → scans Repo blocks for port:
-  #   configInt ".*Endpoint" "port" 4000 → scans Endpoint blocks for port:
-  #
+  # Uses cfg.devExsFile so the read resolves relative to the CONSUMER's project.
   configInt =
     moduleGlob: attr: default:
     let
-      devConfig = if builtins.pathExists ./config/dev.exs then builtins.readFile ./config/dev.exs else "";
+      devConfig =
+        if cfg.devExsFile != null && builtins.pathExists cfg.devExsFile then
+          builtins.readFile cfg.devExsFile
+        else
+          "";
       lines = lib.splitString "\n" devConfig;
       blockPattern = "config :${appName}, ${moduleGlob},.*";
       attrPattern = ".*${attr}:[^0-9]*([0-9]+).*";
@@ -140,8 +145,26 @@ in
       default = false;
     };
 
+    # ── Project-relative file paths (REQUIRED when enable = true) ──────────
+    # builtins.readFile in a shared nix module resolves relative to the
+    # module's nix store path, not the consumer's project. Consumers MUST
+    # set these to the project-local paths (e.g. ./.tool-versions).
+    toolVersionsFile = lib.mkOption {
+      type = lib.types.path;
+      description = "Path to the project's .tool-versions file (e.g. ./.tool-versions).";
+    };
+    mixExsFile = lib.mkOption {
+      type = lib.types.path;
+      description = "Path to the project's mix.exs file (e.g. ./mix.exs).";
+    };
+    devExsFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = "Path to config/dev.exs for port parsing (e.g. ./config/dev.exs). Null = use defaults.";
+    };
+
     # ── Shared internals exposed for sub-modules ────────────────────────────
-    # (read-only; computed from the project, not user-configured)
+    # (read-only; computed from the project files above)
     _appName = lib.mkOption {
       type = lib.types.str;
       default = appName;
@@ -195,8 +218,6 @@ in
 
   config = lib.mkIf cfg.enable {
     # ── rebar3 OTP 29 overlay ─────────────────────────────────────────────
-    # rebar3 3.27.0 fails to build under OTP 29: its test sources trip the new
-    # "exported variable from list subexpression" warning. Drop the test dirs.
     overlays = [
       (_final: prev: {
         rebar3 = prev.rebar3.overrideAttrs (old: {
@@ -235,7 +256,6 @@ in
         package = elixirPkg;
       };
       settings.formatter.mix-format.includes = [ "\\.(ex|exs|heex)$" ];
-      settings.formatter.prettier.excludes = [ "assets/**" ];
     };
 
     dotenv.enable = true;
