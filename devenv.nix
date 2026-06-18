@@ -10,5 +10,6 @@
     ./modules/gitignore
     ./modules/agents-md
     ./modules/lat-md
+    ./modules/elixir
   ];
 }
