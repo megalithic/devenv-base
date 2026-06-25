@@ -19,7 +19,7 @@ let
   cfg = config.devenv-base.elixir.worktree;
   parent = config.devenv-base.elixir;
 
-  pgAllocated = toString config.processes.postgres.ports.main.value;
+  pgPort = parent._configInt ".*Repo" "port" 5432;
 
   # Build the listener-disable export block for the worktree branch.
   # Each entry in disableListeners is a "KEY=VALUE" string.
@@ -104,7 +104,11 @@ in
         && [ -n "$(git worktree list --porcelain | grep -A2 "^worktree $(pwd)$" | grep '^branch ')" ] \
         && [ "$(pwd)" != "$(git worktree list --porcelain | head -2 | grep '^worktree ' | sed 's/^worktree //')" ]; then
         WORKTREE_NAME="$(basename "$(pwd)" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//')"
-        export SNAME="''${APP_NAME}-''${WORKTREE_NAME}"
+        # GIT_WORKTREE drives config/dev.exs: DB name suffix + deterministic
+        # Phoenix/live_debugger/test ports. Exporting it here is what activates
+        # per-worktree isolation; everything downstream reads from it.
+        export GIT_WORKTREE="''${GIT_WORKTREE:-$WORKTREE_NAME}"
+        export SNAME="''${APP_NAME}-''${GIT_WORKTREE}"
         ${listenerExports}
       else
         export SNAME="''${APP_NAME}-dev"
@@ -118,21 +122,16 @@ in
         exec = ''
           ${cfg.hooks.pre-setup}
 
-          # Ensure postgres is running (each worktree gets its own PGDATA
-          # under .devenv/state/postgres/ via DEVENV_STATE).
-          if [ ! -f .devenv/state/postgres/postmaster.pid ]; then
+          # Worktrees share ONE postgres on port ${toString pgPort} and isolate
+          # by database name (config/dev.exs appends "_$GIT_WORKTREE"). Only
+          # start postgres if nothing is already serving that port.
+          if ! pg_isready -h 127.0.0.1 -p ${toString pgPort} -q 2>/dev/null; then
             echo "Starting devenv processes..."
             devenv up -d
-            echo "Waiting for postgres to accept connections..."
+            echo "Waiting for postgres on port ${toString pgPort}..."
             for i in $(seq 1 30); do
-              PG_PID_FILE="$PWD/.devenv/state/postgres/postmaster.pid"
-              if [ -f "$PG_PID_FILE" ]; then
-                WS_PG_PORT="$(sed -n '4p' "$PG_PID_FILE")"
-              else
-                WS_PG_PORT="${pgAllocated}"
-              fi
-              if pg_isready -h "''${HOST:-127.0.0.1}" -p "$WS_PG_PORT" -q 2>/dev/null; then
-                echo "Postgres ready on port $WS_PG_PORT after ''${i}s"
+              if pg_isready -h 127.0.0.1 -p ${toString pgPort} -q 2>/dev/null; then
+                echo "Postgres ready after ''${i}s"
                 break
               fi
               if [ "$i" -eq 30 ]; then
@@ -142,16 +141,6 @@ in
               sleep 2
             done
           fi
-
-          # Read the actual port (may differ from allocated if another worktree
-          # already claimed it).
-          PG_PID_FILE="$PWD/.devenv/state/postgres/postmaster.pid"
-          if [ -f "$PG_PID_FILE" ]; then
-            export PGPORT="$(sed -n '4p' "$PG_PID_FILE")"
-          else
-            export PGPORT="${pgAllocated}"
-          fi
-          echo "Using PGPORT=$PGPORT for ecto"
 
           ${lib.concatMapStrings (kv: "export ${kv}\n") cfg.disableListeners}
 
@@ -192,13 +181,13 @@ in
 
           # Kill the Phoenix/iex server by freeing its port. The beam process
           # serving that listener IS the iex node, so this stops it cleanly.
-          if [ -f .devenv/state/phoenix.port ]; then
-            PHX_PORT="$(cat .devenv/state/phoenix.port)"
+          # PHX_PORT is the deterministic port exported in enterShell.
+          PHX_PORT="''${PHX_PORT:-$(phx-port)}"
+          if [ -n "$PHX_PORT" ]; then
             lsof -tiTCP:"$PHX_PORT" -sTCP:LISTEN 2>/dev/null | xargs -r kill 2>/dev/null || true
-            rm -f .devenv/state/phoenix.port
           fi
 
-          # Best-effort: also kill by SNAME in case the port file is stale.
+          # Best-effort: also kill by SNAME in case the port lookup is stale.
           if [ -n "''${SNAME:-}" ]; then
             pkill -f -- "--sname ''${SNAME}" 2>/dev/null || true
           fi

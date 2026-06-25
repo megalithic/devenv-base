@@ -56,13 +56,17 @@ if [ "$mode" = "enable" ]; then
   mcp_config="$2"
   post_edit_hook="${3:-}"
   mkdir -p "$root/.pi/extensions"
-  safe_ln "$mcp_config" "$mcp_dest"
+  # Materialize mcp.json as a real file (not a symlink) so we can substitute
+  # the deterministic Phoenix port into the tidewave URL. Only ${PHX_PORT} is
+  # replaced; other ${VAR} placeholders are left intact for pi to resolve.
+  [ -L "$mcp_dest" ] && rm "$mcp_dest"
+  sed "s|\${PHX_PORT}|${PHX_PORT:-}|g" "$mcp_config" >"$mcp_dest"
   if [ -n "$post_edit_hook" ]; then
     safe_ln "$post_edit_hook" "$hook_dest"
   else
     safe_rm_link "$hook_dest"
   fi
 else
-  safe_rm_link "$mcp_dest"
+  rm -f "$mcp_dest"
   safe_rm_link "$hook_dest"
 fi

@@ -5,7 +5,7 @@
 # treefmt mix-format, and opts into sub-modules.
 #
 # Sub-modules (each separately enable'd):
-#   devenv-base.elixir.phoenix   — Endpoint port, processes.phoenix, start-phx, status, tidewave MCP, app:* tasks
+#   devenv-base.elixir.phoenix   — phx-port, start-phx, status, tidewave MCP, app:* tasks
 #   devenv-base.elixir.postgres  — Repo port, services.postgres, PG_*_TABLE envs
 #   devenv-base.elixir.worktree  — SNAME detection, disableListeners, pre-/post- hooks, worktree:* tasks
 #

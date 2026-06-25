@@ -1,7 +1,12 @@
 # ─── devenv-base: elixir.phoenix sub-module ─────────────────────────────────
-# Wires processes.phoenix (port reservation only; started manually via
-# start-phx), the start-phx script (with PGPORT export fix), the unified
-# status script, tidewave MCP server, and the app:* mix tasks.
+# Wires start-phx, the unified status script, the tidewave MCP server, and the
+# app:* mix tasks.
+#
+# Ports are NOT allocated/freed by devenv. config/dev.exs derives the Phoenix
+# port deterministically from GIT_WORKTREE:
+#   port = base + :erlang.phash2(GIT_WORKTREE, 1000)   (base = Endpoint :port)
+# The `phx-port` script mirrors that formula (using the project's elixir) and
+# exports PHX_PORT so status + the tidewave URL point at the running server.
 {
   pkgs,
   lib,
@@ -18,17 +23,9 @@ let
   elixirAttr = parent._elixirAttr;
   expertPkg = parent.lsp.expert.package;
 
-  envInt =
-    name: default:
-    let
-      p = builtins.getEnv name;
-    in
-    if p == "" then default else lib.strings.toInt p;
-
   httpPortFromConfig = configInt ".*Endpoint" "port" 4000;
-
-  pgAllocated = toString config.processes.postgres.ports.main.value;
-  phxAllocated = toString config.processes.phoenix.ports.http.value;
+  pgPort = configInt ".*Repo" "port" 5432;
+  elixirPkg = parent._elixirPkg;
 in
 {
   options.devenv-base.elixir.phoenix = {
@@ -41,80 +38,69 @@ in
   };
 
   config = lib.mkIf (parent.enable && cfg.enable) {
-    # ── Port reservation (devenv up does NOT start phoenix) ───────────────
-    processes.phoenix = {
-      ports.http.allocate = envInt "PORT" httpPortFromConfig;
-      start.enable = false;
-      exec = "true";
+    scripts = {
+      # ── phx-port: deterministic Phoenix port (mirrors config/dev.exs) ──────
+      # base + :erlang.phash2(GIT_WORKTREE, 1000); base from Endpoint :port.
+      phx-port.exec = ''
+        ${elixirPkg}/bin/elixir -e '
+          off =
+            case System.get_env("GIT_WORKTREE") do
+              w when w in [nil, ""] -> 0
+              w -> :erlang.phash2(w, 1000)
+            end
+          IO.puts(${toString httpPortFromConfig} + off)
+        '
+      '';
+
+      # ── status script ──────────────────────────────────────────────────────
+      status.exec = ''
+        echo ""
+        MAIN_TREE="$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^worktree //')"
+        if [ -n "$MAIN_TREE" ] && [ "$MAIN_TREE" != "$PWD" ]; then
+          HEADER="$(basename "$MAIN_TREE")/$(basename "$PWD")"
+        else
+          HEADER="$(basename "$PWD")"
+        fi
+        APP_NAME="${parent._appName}"
+        if [ -n "$APP_NAME" ]; then
+          HEADER="$HEADER ($APP_NAME)"
+        fi
+        echo "$HEADER"
+        echo " erlang*  ${toolVersions.erlang}/${erlangAttr}"
+        echo " elixir*  ${toolVersions.elixir}/${elixirAttr}"
+        ${lib.optionalString parent.lsp.expert.enable ''echo " expert   ${expertPkg.version}"''}
+        echo " node     $(node --version | sed 's/^v//')"
+        if pg_isready -h 127.0.0.1 -p ${toString pgPort} -q 2>/dev/null; then
+          echo " pg       ${pkgs.postgresql_18.version} :${toString pgPort}"
+        else
+          echo " pg       ${pkgs.postgresql_18.version} (not running, :${toString pgPort})"
+        fi
+        if lsof -iTCP:"$PHX_PORT" -sTCP:LISTEN -t >/dev/null 2>&1; then
+          echo " phoenix  :$PHX_PORT"
+        else
+          echo " phoenix  (not running, :$PHX_PORT)"
+        fi
+        echo " tidewave  http://localhost:$PHX_PORT/tidewave/mcp"
+        echo ""
+        export PI_MCP_URL="http://localhost:$PHX_PORT/tidewave/mcp"
+        export PI_DISABLE_EMBEDDED=1
+        export PI_ELIXIR_DEBUG=1
+        export PI_ELIXIR_DEBUG_LOG=/tmp/pi-elixir-debug.json
+      '';
+
+      # ── start-phx script ───────────────────────────────────────────────────
+      # Waits for the shared postgres, then boots iex. The Phoenix port and the
+      # database name are both derived from GIT_WORKTREE in config/dev.exs, so no
+      # port hunting or PGPORT rewriting is needed here.
+      start-phx.exec = ''
+        echo "waiting for postgres on port ${toString pgPort}..."
+        until pg_isready -h 127.0.0.1 -p ${toString pgPort} -q; do
+          sleep 1
+        done
+        echo "starting phoenix in iex on port ''${PHX_PORT:-$(phx-port)}..."
+        m s "''${SNAME:-dev-$(basename $PWD)}"
+      '';
     };
-
-    # ── status script ──────────────────────────────────────────────────────
-    scripts.status.exec = ''
-      echo ""
-      MAIN_TREE="$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^worktree //')"
-      if [ -n "$MAIN_TREE" ] && [ "$MAIN_TREE" != "$PWD" ]; then
-        HEADER="$(basename "$MAIN_TREE")/$(basename "$PWD")"
-      else
-        HEADER="$(basename "$PWD")"
-      fi
-      APP_NAME="${parent._appName}"
-      if [ -n "$APP_NAME" ]; then
-        HEADER="$HEADER ($APP_NAME)"
-      fi
-      echo "$HEADER"
-      echo " erlang*  ${toolVersions.erlang}/${erlangAttr}"
-      echo " elixir*  ${toolVersions.elixir}/${elixirAttr}"
-      ${lib.optionalString parent.lsp.expert.enable ''echo " expert   ${expertPkg.version}"''}
-      echo " node     $(node --version | sed 's/^v//')"
-      PG_PID_FILE="''${DEVENV_STATE:-$PWD/.devenv/state}/postgres/postmaster.pid"
-      if [ -f "$PG_PID_FILE" ] && kill -0 "$(head -1 "$PG_PID_FILE")" 2>/dev/null; then
-        PG_PORT="$(sed -n '4p' "$PG_PID_FILE")"
-        echo " pg       ${pkgs.postgresql_18.version} :$PG_PORT (allocated ${pgAllocated})"
-      else
-        echo " pg       ${pkgs.postgresql_18.version} (not running, allocated ${pgAllocated})"
-      fi
-      PHX_PORT_FILE="''${DEVENV_STATE:-$PWD/.devenv/state}/phoenix.port"
-      if [ -f "$PHX_PORT_FILE" ] && lsof -iTCP:"$(cat "$PHX_PORT_FILE")" -sTCP:LISTEN -t >/dev/null 2>&1; then
-        echo " phoenix  :$(cat "$PHX_PORT_FILE")"
-      else
-        echo " phoenix  (not running, allocated ${phxAllocated})"
-      fi
-      echo " tidewave  http://localhost:${phxAllocated}/tidewave/mcp"
-      echo ""
-      export PI_MCP_URL=http://localhost:${phxAllocated}/tidewave/mcp
-      export PI_DISABLE_EMBEDDED=1
-      export PI_ELIXIR_DEBUG=1
-      export PI_ELIXIR_DEBUG_LOG=/tmp/pi-elixir-debug.json
-    '';
-
-    # ── start-phx script ───────────────────────────────────────────────────
-    # Waits for postgres, picks a free phoenix port, exports PGPORT so the
-    # running app connects to THIS worktree's DB (not the main checkout's).
-    scripts.start-phx.exec = ''
-      PG_PID_FILE="''${DEVENV_STATE:-$PWD/.devenv/state}/postgres/postmaster.pid"
-      if [ -f "$PG_PID_FILE" ] && kill -0 "$(head -1 "$PG_PID_FILE")" 2>/dev/null; then
-        PG_PORT="$(sed -n '4p' "$PG_PID_FILE")"
-      else
-        PG_PORT="${pgAllocated}"
-      fi
-      echo "waiting for postgres on port $PG_PORT..."
-      until pg_isready -h "''${HOST:-127.0.0.1}" -p "$PG_PORT" -q; do
-        sleep 1
-      done
-      PHX_PORT="$(free-port ${phxAllocated})"
-      PHX_PORT_FILE="''${DEVENV_STATE:-$PWD/.devenv/state}/phoenix.port"
-      echo "$PHX_PORT" > "$PHX_PORT_FILE"
-      # Export the worktree's actual PG port so the running app connects to
-      # ITS OWN database, not the main checkout's on 5432. Without this the
-      # app falls back to PGPORT=5432 → Phoenix.Ecto.PendingMigrationError (503).
-      export PGPORT="$PG_PORT"
-      echo "starting phoenix in iex on port $PHX_PORT (PGPORT=$PGPORT)..."
-      PORT="$PHX_PORT" m s "''${SNAME:-dev-$(basename $PWD)}"
-      export PI_MCP_URL=http://localhost:${phxAllocated}/tidewave/mcp
-      export PI_DISABLE_EMBEDDED=1
-      export PI_ELIXIR_DEBUG=1
-      export PI_ELIXIR_DEBUG_LOG=/tmp/pi-elixir-debug.json
-    '';
 
     # ── mix tasks ─────────────────────────────────────────────────────────
     tasks = {
@@ -141,15 +127,24 @@ in
     };
 
     # ── enterShell ────────────────────────────────────────────────────────
-    enterShell = ''
-      status
-    '';
+    # Export PHX_PORT early (mkBefore) so the ai module can substitute it into
+    # .pi/mcp.json (tidewave URL) and `status` can display it.
+    enterShell = lib.mkMerge [
+      (lib.mkBefore ''
+        export PHX_PORT="$(phx-port)"
+      '')
+      ''
+        status
+      ''
+    ];
 
     # ── tidewave MCP server ───────────────────────────────────────────────
+    # URL keeps a literal ''${PHX_PORT} placeholder; the ai module substitutes
+    # the deterministic Phoenix port when materializing .pi/mcp.json.
     devenv-base.ai.mcp.extraServers = lib.mkIf cfg.tidewave.enable {
       tidewave = {
         type = "streamable-http";
-        url = "http://localhost:${phxAllocated}/tidewave/mcp";
+        url = "http://localhost:\${PHX_PORT}/tidewave/mcp";
         lifecycle = "keep-alive";
       };
     };

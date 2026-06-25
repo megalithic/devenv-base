@@ -1,6 +1,12 @@
 # ─── devenv-base: elixir.postgres sub-module ────────────────────────────────
-# Wires up services.postgres using the port from config/dev.exs (or PGPORT env),
+# Wires up services.postgres on the fixed port from config/dev.exs (5432),
 # creates dev/test databases, and contributes the postgres section to `status`.
+#
+# Port isolation across git worktrees is NOT done here. Worktrees share one
+# postgres instance and isolate by DATABASE NAME suffix (config/dev.exs reads
+# GIT_WORKTREE and appends "_<name>" to each database). The Phoenix port is
+# likewise derived deterministically in config from GIT_WORKTREE, so devenv
+# does not allocate or free ports here.
 {
   pkgs,
   lib,
@@ -13,13 +19,6 @@ let
 
   configInt = parent._configInt;
   appName = parent._appName;
-
-  envInt =
-    name: default:
-    let
-      p = builtins.getEnv name;
-    in
-    if p == "" then default else lib.strings.toInt p;
 
   pgPortFromConfig = configInt ".*Repo" "port" 5432;
 in
@@ -51,8 +50,8 @@ in
     services.postgres = {
       enable = true;
       inherit (cfg) package;
-      listen_addresses = builtins.getEnv "HOST";
-      port = envInt "PGPORT" pgPortFromConfig;
+      listen_addresses = "127.0.0.1";
+      port = pgPortFromConfig;
       initialDatabases = [
         { name = builtins.getEnv "PG_DEV_TABLE"; }
         { name = builtins.getEnv "PG_TEST_TABLE"; }
