@@ -17,12 +17,13 @@ let
           "*.lock"
           "*.lockb"
           ".devenv*"
+          "mix.lock"
           "package-lock.json"
           "pnpm-lock.yaml"
         ];
         programs = {
           nixfmt.enable = true;
-          prettier.enable = true;
+          biome.enable = true;
           shfmt.enable = true;
         };
       }
